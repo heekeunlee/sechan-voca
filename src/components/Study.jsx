@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { vocabularyData } from '../data/vocabulary';
+import confetti from 'canvas-confetti';
 
 // Utility to shuffle array
 const shuffle = (array) => [...array].sort(() => Math.random() - 0.5);
@@ -8,29 +9,27 @@ export default function Study({ day, onFinish, onBack }) {
   const [questions, setQuestions] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState(null);
-  const [isCorrect, setIsCorrect] = useState(null); // true, false, or null
+  const [isCorrect, setIsCorrect] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  const [stats, setStats] = useState({ correct: 0, wrong: 0 });
 
-  // Initialize questions (Learning Mode: Go through all words once)
+  // Initialize questions
   useEffect(() => {
     const words = vocabularyData[day];
     if (!words) return;
 
     const quizSet = words.map(target => {
-      // Get 3 random words excluding target for distractors
       const others = words.filter(w => w.id !== target.id);
       const distractors = shuffle(others).slice(0, 3);
       const options = shuffle([target, ...distractors]);
-      return {
-        target,
-        options
-      };
+      return { target, options };
     });
 
-    // For study mode, maybe keep them in order? Or shuffle?
-    // "Learning" usually implies order might help, but random is better for testing.
-    // Let's shuffle to make it a "Game-like" learning.
     setQuestions(shuffle(quizSet));
+    setCurrentIndex(0);
+    setStats({ correct: 0, wrong: 0 });
+    setShowStats(false);
   }, [day]);
 
   // Audio Playback
@@ -42,29 +41,31 @@ export default function Study({ day, onFinish, onBack }) {
     window.speechSynthesis.speak(utterance);
   };
 
-  // Play audio when question changes
   useEffect(() => {
-    if (questions.length > 0 && currentIndex < questions.length) {
+    if (!showStats && questions.length > 0 && currentIndex < questions.length) {
       playAudio(questions[currentIndex].target.word);
     }
-  }, [currentIndex, questions]);
+  }, [currentIndex, questions, showStats]);
 
   const handleOptionClick = (option) => {
-    if (isProcessing) return;
-    // Don't block interaction immediately if wrong, let them try again?
-    // User request: "Select answer from 4 choices"
-    // If wrong: "Buzz" sound, highlight wrong.
-    // If right: "Ding", Next.
+    if (isProcessing || showStats) return;
 
     const currentQ = questions[currentIndex];
 
     if (option.id === currentQ.target.id) {
-      // Correct!
+      // Correct
       setIsProcessing(true);
       setSelectedOption(option);
       setIsCorrect(true);
+      setStats(prev => ({ ...prev, correct: prev.correct + 1 }));
 
-      // Auto advance
+      confetti({
+        particleCount: 30,
+        spread: 50,
+        origin: { y: 0.7 },
+        colors: ['#6BCB77', '#FFD93D']
+      });
+
       setTimeout(() => {
         if (currentIndex < questions.length - 1) {
           setCurrentIndex(prev => prev + 1);
@@ -72,24 +73,62 @@ export default function Study({ day, onFinish, onBack }) {
           setIsCorrect(null);
           setIsProcessing(false);
         } else {
-          // End of Study
-          onFinish();
+          finishChapter();
         }
-      }, 1000);
+      }, 1200);
     } else {
-      // Wrong!
+      // Wrong
       setSelectedOption(option);
       setIsCorrect(false);
-      // Don't advance, let them try again.
-      // Maybe shake effect?
+      setStats(prev => ({ ...prev, wrong: prev.wrong + 1 }));
+
+      // Allow retry after delay
       setTimeout(() => {
-        setSelectedOption(null); // Reset selection to allow retry
+        setSelectedOption(null);
         setIsCorrect(null);
-      }, 500);
+      }, 800);
     }
   };
 
+  const finishChapter = () => {
+    setShowStats(true);
+    confetti({
+      particleCount: 150,
+      spread: 70,
+      origin: { y: 0.6 }
+    });
+  };
+
   if (questions.length === 0) return <div>Loading...</div>;
+
+  // Stats View
+  if (showStats) {
+    const total = stats.correct + stats.wrong;
+    // Just count questions for "Great Job" context
+    const questionCount = questions.length;
+    const accuracy = Math.round((stats.correct / (stats.correct + stats.wrong)) * 100) || 0; // simplistic since we allow retries, stats.wrong increases
+    // Better stat: "Mistakes made"
+
+    let message = "Amazing!";
+    if (stats.wrong === 0) message = "Perfect! Genius! 🌟";
+    else if (stats.wrong <= 3) message = "Great Job! 🎉";
+    else message = "Good Effort! Keep practicing! 💪";
+
+    return (
+      <div className="study-container stats-view">
+        <h1 className="stats-title">Chapter Complete!</h1>
+        <div className="stats-card">
+          <div className="stat-emoji">{stats.wrong === 0 ? '🏆' : '🎯'}</div>
+          <p className="stat-message">{message}</p>
+          <div className="stat-details">
+            <p>Words Learned: {questionCount}</p>
+            <p>Mistakes: {stats.wrong}</p>
+          </div>
+        </div>
+        <button className="btn-primary" onClick={onFinish}>Finish</button>
+      </div>
+    );
+  }
 
   const currentQ = questions[currentIndex];
   const progress = ((currentIndex + 1) / questions.length) * 100;
@@ -113,16 +152,17 @@ export default function Study({ day, onFinish, onBack }) {
           >
             🔊
           </button>
+          {isCorrect === true && <div className="feedback-emoji correct">😍</div>}
+          {isCorrect === false && <div className="feedback-emoji wrong">😢</div>}
         </div>
       </div>
 
       <div className="options-grid">
         {currentQ.options.map((opt, idx) => {
           let btnClass = "btn-option";
-          // Visual feedback logic
           if (selectedOption === opt) {
-            if (isCorrect === true) btnClass += " correct"; // Selected & Correct
-            if (isCorrect === false) btnClass += " wrong";   // Selected & Wrong
+            if (isCorrect === true) btnClass += " correct";
+            if (isCorrect === false) btnClass += " wrong";
           }
 
           return (
@@ -147,6 +187,41 @@ export default function Study({ day, onFinish, onBack }) {
           width: 100%;
           margin: 0 auto;
         }
+        .stats-view {
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+        }
+        .stats-title {
+          font-family: var(--font-eng);
+          color: var(--color-accent);
+          font-size: 2.5rem;
+          margin-bottom: 20px;
+        }
+        .stats-card {
+          background: white;
+          padding: 40px;
+          border-radius: var(--radius-lg);
+          box-shadow: var(--shadow-card);
+          width: 100%;
+          margin-bottom: 30px;
+        }
+        .stat-emoji {
+          font-size: 5rem;
+          margin-bottom: 20px;
+          animation: bounce 1s infinite alternate;
+        }
+        .stat-message {
+          font-size: 2rem;
+          color: var(--color-text);
+          font-weight: bold;
+          margin-bottom: 20px;
+        }
+        .stat-details {
+          font-size: 1.2rem;
+          color: #666;
+        }
+        
         .header {
           display: flex;
           align-items: center;
@@ -181,6 +256,7 @@ export default function Study({ day, onFinish, onBack }) {
             justify-content: center;
             align-items: center;
             margin-bottom: 30px;
+            position: relative;
         }
         .word-card {
             background: white;
@@ -193,7 +269,7 @@ export default function Study({ day, onFinish, onBack }) {
             gap: 20px;
             width: 100%;
             text-align: center;
-            animation: float 3s ease-in-out infinite;
+            position: relative; 
         }
         .word-text {
             font-size: 3.5rem;
@@ -216,6 +292,19 @@ export default function Study({ day, onFinish, onBack }) {
         .btn-audio:active {
             transform: scale(0.95);
         }
+        
+        .feedback-emoji {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          font-size: 8rem;
+          pointer-events: none;
+          animation: pop-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          z-index: 10;
+        }
+        .correct { color: var(--color-secondary); }
+        .wrong { color: var(--color-danger); }
 
         .options-grid {
             display: grid;
@@ -237,26 +326,25 @@ export default function Study({ day, onFinish, onBack }) {
         .btn-option:active {
             transform: scale(0.98);
         }
-        .correct {
+        .btn-option.correct {
             background: var(--color-secondary) !important;
             color: white !important;
             border-color: var(--color-secondary) !important;
-            animation: bounce 0.5s;
         }
-        .wrong {
+        .btn-option.wrong {
             background: var(--color-danger) !important;
             color: white !important;
             border-color: var(--color-danger) !important;
             animation: shake 0.4s;
         }
 
-        @keyframes float {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
+        @keyframes pop-in {
+          0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+          100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
         }
         @keyframes bounce {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.1); }
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
         }
         @keyframes shake {
             0%, 100% { transform: translateX(0); }
