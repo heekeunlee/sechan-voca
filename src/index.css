@@ -1,0 +1,69 @@
+:root {
+  --color-primary: #FFD93D; /* Sunny Yellow */
+  --color-secondary: #6BCB77; /* Fresh Green */
+  --color-accent: #4D96FF; /* Sky Blue */
+  --color-danger: #FF6B6B; /* Soft Red for errors */
+  --color-text: #2C3E50; /* Dark Blue-Grey Text */
+  --color-bg: #E0F7FA; /* Light Blue Background */
+  --color-white: #ffffff;
+  
+  --font-main: 'Jua', sans-serif;
+  --font-eng: 'Fredoka', sans-serif;
+  
+  --radius-lg: 20px;
+  --radius-md: 12px;
+  --shadow-card: 0 4px 15px rgba(0,0,0,0.1);
+  --shadow-btn: 0 4px 0 rgba(0,0,0,0.2);
+}
+
+* {
+  box-sizing: border-box;
+  user-select: none; /* Prevent selection for app-like feel on touch */
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-main);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  max-width: 600px; /* Mobile focused max width */
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  font-family: var(--font-main);
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: transform 0.1s;
+}
+
+button:active {
+  transform: scale(0.95);
+}
+
+.btn-primary {
+  background-color: var(--color-accent);
+  color: white;
+  padding: 12px 24px;
+  border-radius: var(--radius-lg);
+  font-size: 1.2rem;
+  box-shadow: var(--shadow-btn);
+}
+
+.title {
+  font-family: var(--font-eng);
+  font-weight: 600;
+  color: var(--color-accent);
+  text-align: center;
+  margin: 20px 0;
+  text-shadow: 2px 2px 0px white;
+}
