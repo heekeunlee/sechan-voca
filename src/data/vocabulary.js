@@ -219,3 +219,4 @@ export const vocabularyData = {
     { id: 19, word: "make noise", meaning: "소음 내다" },
     { id: 20, word: "hand in hand", meaning: "손을 잡고" }
   ]
+};

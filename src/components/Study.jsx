@@ -1,93 +1,143 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { vocabularyData } from '../data/vocabulary';
 
+// Utility to shuffle array
+const shuffle = (array) => [...array].sort(() => Math.random() - 0.5);
+
 export default function Study({ day, onFinish, onBack }) {
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const [isFlipped, setIsFlipped] = useState(false);
-    const words = vocabularyData[day] || [];
-    const currentWord = words[currentIndex];
+  const [questions, setQuestions] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedOption, setSelectedOption] = useState(null);
+  const [isCorrect, setIsCorrect] = useState(null); // true, false, or null
+  const [isProcessing, setIsProcessing] = useState(false);
 
-    const playAudio = (text) => {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'en-US';
-        utterance.rate = 0.8; // Slightly slower for kids
-        window.speechSynthesis.speak(utterance);
-    };
+  // Initialize questions (Learning Mode: Go through all words once)
+  useEffect(() => {
+    const words = vocabularyData[day];
+    if (!words) return;
 
-    useEffect(() => {
-        if (currentWord && !isFlipped) {
-            playAudio(currentWord.word);
-        }
-    }, [currentIndex, currentWord]);
+    const quizSet = words.map(target => {
+      // Get 3 random words excluding target for distractors
+      const others = words.filter(w => w.id !== target.id);
+      const distractors = shuffle(others).slice(0, 3);
+      const options = shuffle([target, ...distractors]);
+      return {
+        target,
+        options
+      };
+    });
 
-    const handleNext = (e) => {
-        e.stopPropagation();
-        if (currentIndex < words.length - 1) {
-            setIsFlipped(false);
-            setTimeout(() => setCurrentIndex(prev => prev + 1), 200);
+    // For study mode, maybe keep them in order? Or shuffle?
+    // "Learning" usually implies order might help, but random is better for testing.
+    // Let's shuffle to make it a "Game-like" learning.
+    setQuestions(shuffle(quizSet));
+  }, [day]);
+
+  // Audio Playback
+  const playAudio = (text) => {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = 0.8;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Play audio when question changes
+  useEffect(() => {
+    if (questions.length > 0 && currentIndex < questions.length) {
+      playAudio(questions[currentIndex].target.word);
+    }
+  }, [currentIndex, questions]);
+
+  const handleOptionClick = (option) => {
+    if (isProcessing) return;
+    // Don't block interaction immediately if wrong, let them try again?
+    // User request: "Select answer from 4 choices"
+    // If wrong: "Buzz" sound, highlight wrong.
+    // If right: "Ding", Next.
+
+    const currentQ = questions[currentIndex];
+
+    if (option.id === currentQ.target.id) {
+      // Correct!
+      setIsProcessing(true);
+      setSelectedOption(option);
+      setIsCorrect(true);
+
+      // Auto advance
+      setTimeout(() => {
+        if (currentIndex < questions.length - 1) {
+          setCurrentIndex(prev => prev + 1);
+          setSelectedOption(null);
+          setIsCorrect(null);
+          setIsProcessing(false);
         } else {
-            onFinish();
+          // End of Study
+          onFinish();
         }
-    };
+      }, 1000);
+    } else {
+      // Wrong!
+      setSelectedOption(option);
+      setIsCorrect(false);
+      // Don't advance, let them try again.
+      // Maybe shake effect?
+      setTimeout(() => {
+        setSelectedOption(null); // Reset selection to allow retry
+        setIsCorrect(null);
+      }, 500);
+    }
+  };
 
-    const handlePrev = (e) => {
-        e.stopPropagation();
-        if (currentIndex > 0) {
-            setIsFlipped(false);
-            setTimeout(() => setCurrentIndex(prev => prev - 1), 200);
-        }
-    };
+  if (questions.length === 0) return <div>Loading...</div>;
 
-    const toggleFlip = () => setIsFlipped(!isFlipped);
+  const currentQ = questions[currentIndex];
+  const progress = ((currentIndex + 1) / questions.length) * 100;
 
-    return (
-        <div className="study-container">
-            <div className="header">
-                <button className="btn-icon" onClick={onBack}>⬅️</button>
-                <h2>Study {day}</h2>
-                <span className="counter">{currentIndex + 1} / {words.length}</span>
-            </div>
+  return (
+    <div className="study-container">
+      <div className="header">
+        <button className="btn-icon" onClick={onBack}>⬅️</button>
+        <div className="progress-bar-container">
+          <div className="progress-bar" style={{ width: `${progress}%` }}></div>
+        </div>
+        <span className="counter">{currentIndex + 1}/{questions.length}</span>
+      </div>
 
-            <div className="card-area" onClick={toggleFlip}>
-                <div className={`card ${isFlipped ? 'flipped' : ''}`}>
-                    <div className="card-face front">
-                        <span className="word-text">{currentWord?.word}</span>
-                        <button
-                            className="btn-audio"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                playAudio(currentWord?.word);
-                            }}
-                        >
-                            🔊
-                        </button>
-                        <div className="hint">Tap to flip</div>
-                    </div>
-                    <div className="card-face back">
-                        <span className="meaning-text">{currentWord?.meaning}</span>
-                        <span className="small-word">{currentWord?.word}</span>
-                    </div>
-                </div>
-            </div>
+      <div className="question-area">
+        <div className="word-card">
+          <span className="word-text">{currentQ.target.word}</span>
+          <button
+            className="btn-audio"
+            onClick={() => playAudio(currentQ.target.word)}
+          >
+            🔊
+          </button>
+        </div>
+      </div>
 
-            <div className="controls">
-                <button
-                    className="btn-nav"
-                    onClick={handlePrev}
-                    disabled={currentIndex === 0}
-                >
-                    PREV
-                </button>
-                <button
-                    className="btn-nav primary" // Changed to primary class only here
-                    onClick={handleNext}
-                >
-                    {currentIndex === words.length - 1 ? 'START QUIZ 🚀' : 'NEXT'}
-                </button>
-            </div>
+      <div className="options-grid">
+        {currentQ.options.map((opt, idx) => {
+          let btnClass = "btn-option";
+          // Visual feedback logic
+          if (selectedOption === opt) {
+            if (isCorrect === true) btnClass += " correct"; // Selected & Correct
+            if (isCorrect === false) btnClass += " wrong";   // Selected & Wrong
+          }
 
-            <style>{`
+          return (
+            <button
+              key={idx}
+              className={btnClass}
+              onClick={() => handleOptionClick(opt)}
+            >
+              {opt.meaning}
+            </button>
+          );
+        })}
+      </div>
+
+      <style>{`
         .study-container {
           flex: 1;
           display: flex;
@@ -99,122 +149,121 @@ export default function Study({ day, onFinish, onBack }) {
         }
         .header {
           display: flex;
-          justify-content: space-between;
           align-items: center;
+          gap: 15px;
           margin-bottom: 20px;
-        }
-        .counter {
-          font-weight: bold;
-          color: var(--color-text);
         }
         .btn-icon {
           background: none;
           font-size: 1.5rem;
+          padding: 0;
         }
-        .card-area {
-          flex: 1;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          perspective: 1000px;
-          cursor: pointer;
+        .progress-bar-container {
+            flex: 1;
+            height: 10px;
+            background: #e0e0e0;
+            border-radius: 5px;
+            overflow: hidden;
         }
-        .card {
-          width: 100%;
-          max-width: 320px;
-          height: 400px;
-          position: relative;
-          transform-style: preserve-3d;
-          transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1);
-          border-radius: var(--radius-lg);
-          box-shadow: var(--shadow-card);
+        .progress-bar {
+            height: 100%;
+            background: var(--color-secondary);
+            transition: width 0.3s;
         }
-        .card.flipped {
-          transform: rotateY(180deg);
+        .counter {
+            font-weight: bold;
+            color: #999;
         }
-        .card-face {
-          position: absolute;
-          width: 100%;
-          height: 100%;
-          border-radius: var(--radius-lg);
-          backface-visibility: hidden;
-          background: white;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          align-items: center;
-          padding: 20px;
+
+        .question-area {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 30px;
         }
-        .front {
-          background: linear-gradient(135deg, white, #fffdf5);
-        }
-        .back {
-          background: linear-gradient(135deg, var(--color-bg), white);
-          transform: rotateY(180deg);
+        .word-card {
+            background: white;
+            padding: 40px;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-card);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            width: 100%;
+            text-align: center;
+            animation: float 3s ease-in-out infinite;
         }
         .word-text {
-          font-size: 3rem;
-          font-weight: 700;
-          color: var(--color-accent);
-          font-family: var(--font-eng);
-        }
-        .meaning-text {
-          font-size: 2.5rem;
-          font-weight: 700;
-          color: var(--color-text);
-        }
-        .small-word {
-          margin-top: 10px;
-          font-size: 1.2rem;
-          color: #999;
-          font-family: var(--font-eng);
-        }
-        .hint {
-          font-size: 0.9rem;
-          color: #aaa;
-          margin-top: 20px;
+            font-size: 3.5rem;
+            font-weight: 700;
+            color: var(--color-accent);
+            font-family: var(--font-eng);
         }
         .btn-audio {
-          background: var(--color-primary);
-          border-radius: 50%;
-          width: 50px;
-          height: 50px;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          font-size: 1.5rem;
-          margin-top: 20px;
-          box-shadow: 0 4px 0 rgba(0,0,0,0.1);
+            background: var(--color-primary);
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            font-size: 1.8rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 0 rgba(0,0,0,0.15);
+            transition: transform 0.1s;
         }
         .btn-audio:active {
-          transform: scale(0.9);
-          box-shadow: none;
+            transform: scale(0.95);
         }
-        .controls {
-          display: flex;
-          gap: 20px;
-          margin-top: 30px;
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            padding-bottom: 20px;
         }
-        .btn-nav {
-          flex: 1;
-          padding: 15px;
-          border-radius: var(--radius-lg);
-          font-size: 1.2rem;
-          font-weight: bold;
-          background: white;
-          color: var(--color-text);
-          box-shadow: var(--shadow-btn);
+        .btn-option {
+            background: white;
+            border: 3px solid #eee;
+            padding: 20px;
+            border-radius: var(--radius-md);
+            font-size: 1.3rem;
+            color: var(--color-text);
+            box-shadow: 0 4px 0 rgba(0,0,0,0.05);
+            transition: all 0.2s;
+            font-weight: bold;
         }
-        .btn-nav.primary {
-          background: var(--color-secondary);
-          color: white;
+        .btn-option:active {
+            transform: scale(0.98);
         }
-        .btn-nav:disabled {
-          opacity: 0.5;
-          box-shadow: none;
-          transform: none;
+        .correct {
+            background: var(--color-secondary) !important;
+            color: white !important;
+            border-color: var(--color-secondary) !important;
+            animation: bounce 0.5s;
+        }
+        .wrong {
+            background: var(--color-danger) !important;
+            color: white !important;
+            border-color: var(--color-danger) !important;
+            animation: shake 0.4s;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        @keyframes bounce {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
         }
       `}</style>
-        </div>
-    );
+    </div>
+  );
 }
